@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Resume Analyzer | RAG + LLM Powered Career Intelligence</title>
+  <meta name="description" content="Upload your resume and get an instant ATS score, skill gap analysis, and AI-powered improvement suggestions powered by RAG and Groq Llama 3.3 LLM." />
+  <meta name="keywords" content="resume analyzer, ATS score, AI resume, job application, career coach, RAG, LLM" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- Animated Gradient Background -->
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Canvas Particle Field -->
+  <canvas id="particles-canvas" aria-hidden="true"></canvas>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <div class="logo-text">
+          <span class="logo-primary">ResumeAI</span>
+          <span class="logo-tag">RAG + LLM</span>
+        </div>
+      </div>
+      <nav class="header-badges">
+        <span class="badge badge-green"><i class="fa-solid fa-circle"></i> Live</span>
+        <span class="badge badge-purple"><i class="fa-solid fa-microchip"></i> Groq Llama 3.3</span>
+        <span class="badge badge-blue"><i class="fa-solid fa-database"></i> FAISS RAG</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container">
+
+    <!-- ===== HERO ===== -->
+    <section class="hero" id="hero">
+      <div class="hero-label">
+        <span class="pill"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-Powered Career Intelligence</span>
+      </div>
+      <h1 class="hero-title">
+        Get Your Resume<br />
+        <span class="gradient-text">ATS Score & Insights</span><br />
+        in Seconds
+      </h1>
+      <p class="hero-sub">
+        Upload your resume, paste a job description, and our RAG + LLM pipeline delivers
+        an ATS match score, semantic analysis, skill gap report, and personalized improvement roadmap.
+      </p>
+      <div class="hero-tech-stack">
+        <div class="tech-chip"><i class="fa-solid fa-bolt"></i> Groq Llama 3.3</div>
+        <div class="tech-chip"><i class="fa-solid fa-cube"></i> FAISS Embeddings</div>
+        <div class="tech-chip"><i class="fa-solid fa-network-wired"></i> Sentence Transformers</div>
+        <div class="tech-chip"><i class="fa-brands fa-python"></i> Flask + Python</div>
+      </div>
+    </section>
+
+    <!-- ===== UPLOAD FORM ===== -->
+    <section class="upload-section" id="analyzer">
+      <div class="card upload-card">
+        <div class="card-header">
+          <div class="card-icon card-icon--purple">
+            <i class="fa-solid fa-file-arrow-up"></i>
+          </div>
+          <div>
+            <h2 class="card-title">Analyze Your Resume</h2>
+            <p class="card-subtitle">PDF or DOCX · Max 5 MB</p>
+          </div>
+        </div>
+
+        <form id="analyze-form" novalidate>
+          <!-- Drop Zone -->
+          <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="Click or drag to upload resume">
+            <div class="drop-zone-content" id="drop-zone-content">
+              <div class="upload-icon-wrap">
+                <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              </div>
+              <p class="drop-title">Drag & Drop your resume here</p>
+              <p class="drop-sub">or <span class="drop-link">browse files</span></p>
+              <p class="drop-formats">Supported: PDF, DOCX</p>
+            </div>
+            <div class="file-selected hidden" id="file-selected">
+              <div class="file-icon-wrap">
+                <i class="fa-regular fa-file-lines file-type-icon"></i>
+              </div>
+              <div class="file-info">
+                <p class="file-name" id="file-name">resume.pdf</p>
+                <p class="file-size" id="file-size">—</p>
+              </div>
+              <button type="button" class="file-remove" id="file-remove" aria-label="Remove file">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <input type="file" id="resume-file" accept=".pdf,.docx,.doc" class="file-input" />
+          </div>
+
+          <!-- Job Description -->
+          <div class="form-group">
+            <label class="form-label" for="job-description">
+              <i class="fa-solid fa-briefcase"></i> Job Description
+            </label>
+            <textarea
+              id="job-description"
+              name="job_description"
+              class="form-textarea"
+              placeholder="Paste the full job description here… Include required skills, responsibilities, and qualifications for the most accurate analysis."
+              rows="8"
+              minlength="50"
+            ></textarea>
+            <div class="char-counter">
+              <span id="char-count">0</span> characters
+              <span class="char-min">(min 50)</span>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" class="btn-analyze" id="submit-btn">
+            <span class="btn-text">
+              <i class="fa-solid fa-magnifying-glass-chart"></i>
+              Analyze My Resume
+            </span>
+            <span class="btn-loading hidden">
+              <div class="spinner-ring"></div>
+              Analyzing…
+            </span>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== LOADING STATE ===== -->
+    <section class="loading-section hidden" id="loading-section">
+      <div class="card loading-card">
+        <div class="loading-animation">
+          <div class="pulse-ring"></div>
+          <div class="loading-brain"><i class="fa-solid fa-brain"></i></div>
+        </div>
+        <h2 class="loading-title">AI is analyzing your resume…</h2>
+        <div class="loading-steps" id="loading-steps">
+          <div class="step-item active" data-step="0">
+            <div class="step-dot"></div>
+            <span>Parsing resume document</span>
+          </div>
+          <div class="step-item" data-step="1">
+            <div class="step-dot"></div>
+            <span>Generating semantic embeddings</span>
+          </div>
+          <div class="step-item" data-step="2">
+            <div class="step-dot"></div>
+            <span>Running FAISS similarity search</span>
+          </div>
+          <div class="step-item" data-step="3">
+            <div class="step-dot"></div>
+            <span>Calculating ATS score</span>
+          </div>
+          <div class="step-item" data-step="4">
+            <div class="step-dot"></div>
+            <span>Generating AI insights with Groq Llama 3.3</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== RESULTS SECTION ===== -->
+    <section class="results-section hidden" id="results-section">
+
+      <!-- Score Banner -->
+      <div class="score-banner" id="score-banner">
+        <div class="score-left">
+          <p class="score-label">ATS Match Score</p>
+          <div class="score-number-wrap">
+            <span class="score-number" id="score-display">0</span>
+            <span class="score-max">/100</span>
+          </div>
+          <p class="score-verdict" id="score-verdict">—</p>
+        </div>
+        <div class="score-gauge-wrap">
+          <canvas id="gauge-chart" width="200" height="120"></canvas>
+        </div>
+        <div class="score-metrics">
+          <div class="metric">
+            <span class="metric-val" id="semantic-score-val">—</span>
+            <span class="metric-label">Semantic Match</span>
+          </div>
+          <div class="metric">
+            <span class="metric-val" id="keyword-score-val">—</span>
+            <span class="metric-label">Keyword Match</span>
+          </div>
+          <div class="metric">
+            <span class="metric-val" id="resume-words-val">—</span>
+            <span class="metric-label">Resume Words</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Grid -->
+      <div class="results-grid">
+
+        <!-- Candidate Summary -->
+        <div class="card result-card result-card--full" id="summary-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--blue"><i class="fa-solid fa-user-tie"></i></div>
+            <h3>Candidate Summary</h3>
+          </div>
+          <p class="summary-text" id="candidate-summary">—</p>
+          <blockquote class="verdict-quote" id="verdict-explanation">—</blockquote>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div class="card result-card" id="breakdown-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--purple"><i class="fa-solid fa-chart-pie"></i></div>
+            <h3>Score Breakdown</h3>
+          </div>
+          <div class="breakdown-list" id="breakdown-list">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+
+        <!-- Matched Keywords -->
+        <div class="card result-card" id="matched-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--green"><i class="fa-solid fa-circle-check"></i></div>
+            <h3>Matched Keywords</h3>
+          </div>
+          <div class="chip-cloud" id="matched-chips">—</div>
+        </div>
+
+        <!-- Missing Keywords -->
+        <div class="card result-card" id="missing-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Missing Keywords</h3>
+          </div>
+          <div class="chip-cloud" id="missing-chips">—</div>
+        </div>
+
+        <!-- Strengths -->
+        <div class="card result-card" id="strengths-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--green"><i class="fa-solid fa-star"></i></div>
+            <h3>Your Strengths</h3>
+          </div>
+          <div class="feature-list" id="strengths-list">—</div>
+        </div>
+
+        <!-- Improvement Areas -->
+        <div class="card result-card" id="improvement-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--orange"><i class="fa-solid fa-arrow-trend-up"></i></div>
+            <h3>Improvement Areas</h3>
+          </div>
+          <div class="feature-list" id="improvement-list">—</div>
+        </div>
+
+        <!-- Quick Wins -->
+        <div class="card result-card result-card--full" id="quickwins-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--yellow"><i class="fa-solid fa-bolt"></i></div>
+            <h3>Quick Wins — Act on These Today</h3>
+          </div>
+          <div class="quick-wins-grid" id="quick-wins-grid">—</div>
+        </div>
+
+        <!-- Interview Talking Points -->
+        <div class="card result-card" id="interview-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--blue"><i class="fa-solid fa-comments"></i></div>
+            <h3>Interview Talking Points</h3>
+          </div>
+          <ul class="talking-points-list" id="talking-points-list">—</ul>
+        </div>
+
+        <!-- Rewrite Suggestion -->
+        <div class="card result-card" id="rewrite-card">
+          <div class="result-card-header">
+            <div class="card-icon card-icon--purple"><i class="fa-solid fa-pencil"></i></div>
+            <h3>AI Rewrite Suggestion</h3>
+          </div>
+          <div class="rewrite-box" id="rewrite-suggestion">—</div>
+        </div>
+
+      </div>
+
+      <!-- CTA -->
+      <div class="results-cta">
+        <button class="btn-reanalyze" id="reanalyze-btn">
+          <i class="fa-solid fa-rotate-right"></i> Analyze Another Resume
+        </button>
+      </div>
+
+    </section>
+
+    <!-- ===== ERROR SECTION ===== -->
+    <div class="error-toast hidden" id="error-toast" role="alert">
+      <i class="fa-solid fa-circle-exclamation"></i>
+      <span id="error-message">Something went wrong.</span>
+      <button class="toast-close" id="toast-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section class="how-it-works">
+      <h2 class="section-title">How It Works</h2>
+      <p class="section-sub">Three-stage AI pipeline that mirrors what real ATS systems do — and more.</p>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">01</div>
+          <div class="step-icon"><i class="fa-solid fa-file-magnifying-glass"></i></div>
+          <h3>Parse &amp; Chunk</h3>
+          <p>Resume is parsed from PDF/DOCX and split into semantically meaningful chunks for granular analysis.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-number">02</div>
+          <div class="step-icon"><i class="fa-solid fa-vector-square"></i></div>
+          <h3>Embed &amp; Retrieve (RAG)</h3>
+          <p>Sentence-Transformers encode every chunk into vectors stored in FAISS. The job description retrieves the most relevant resume sections.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-number">03</div>
+          <div class="step-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <h3>LLM Analysis</h3>
+          <p>Llama 3.3 on Groq receives the RAG context and generates deep insights: ATS score, gaps, strengths, and a personalized action plan.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STATS ===== -->
+    <section class="stats-section">
+      <div class="stat-item">
+        <span class="stat-number">98%</span>
+        <span class="stat-label">ATS Coverage</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-number">&lt; 30s</span>
+        <span class="stat-label">Analysis Time</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-number">RAG</span>
+        <span class="stat-label">Powered Retrieval</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-number">LLM</span>
+        <span class="stat-label">Deep Insights</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <i class="fa-solid fa-brain"></i>
+        <span>ResumeAI</span>
+      </div>
+      <p class="footer-tagline">Built with RAG + LLM · Groq Llama 3.3 · FAISS · Google Embeddings</p>
+      <p class="footer-copy">© 2025 AI Resume Analyzer. Open source. Deploy your own.</p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
