@@ -1,6 +1,6 @@
 """
-AI Resume Analyzer — Pure Groq Edition (Indestructible V2)
-Everything Lite | No NaN | Sync Dashboard Stats
+AI Resume Analyzer — Pure Groq Edition (Indestructible V3)
+100% UI Sync | Zero Binary Dependencies | No Score Gaps
 """
 
 import os
@@ -9,7 +9,6 @@ import json
 import io
 import logging
 import time
-from pathlib import Path
 from math import sqrt
 
 from flask import Flask, request, jsonify, render_template
@@ -29,7 +28,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# Total CORS freedom for Vercel connection
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
@@ -48,11 +46,9 @@ def get_groq_client():
 # ---------------------------------------------------------------------------
 
 def get_words(text: str) -> list[str]:
-    """Clean and tokenize text."""
     return [w for w in re.sub(r'[^a-zA-Z\s]', '', text.lower()).split() if w and w not in STOPWORDS]
 
 def calculate_similarity_lite(query: str, chunk: str) -> float:
-    """Memory-Lite Similarity WITHOUT heavy binary libraries."""
     q_words = get_words(query)
     c_words = get_words(chunk)
     if not q_words or not c_words: return 0.0
@@ -66,7 +62,6 @@ def calculate_similarity_lite(query: str, chunk: str) -> float:
     return dot / (norm_q * norm_c)
 
 def semantic_search_lite(query: str, chunks: list[str], top_k: int = 5) -> list[str]:
-    """Fast, indestructible RAG ranking."""
     if not chunks: return []
     scored = [(calculate_similarity_lite(query, c), c) for c in chunks]
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -107,7 +102,7 @@ def analyze_with_groq(prompt: str, max_retries: int = 3) -> dict:
         try:
             response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a professional ATS expert. JSON ONLY."},
+                    {"role": "system", "content": "You are a professional ATS expert. Respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
                 model="llama-3.3-70b-versatile",
@@ -127,7 +122,7 @@ def analyze_with_groq(prompt: str, max_retries: int = 3) -> dict:
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "rag": "Indestructible-V2"})
+    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "rag": "Indestructible-V3"})
 
 @app.route("/api/analyze", methods=["POST", "OPTIONS"])
 def analyze():
@@ -151,35 +146,36 @@ def analyze():
         # 2. RAG Search
         relevant_chunks = semantic_search_lite(jd, chunks)
         
-        # 3. Analyze with Groq
+        # 3. Analyze with Groq (Full UI Schema)
         context_str = "\n---\n".join(relevant_chunks)
-        prompt = f"""Analyze resume for JD. Output valid JSON.
-        Required Fields:
-        - ats_score: 0-100
-        - semantic_score: 0-100
-        - keyword_score: 0-100
-        - overall_verdict: STRONG_MATCH/GOOD_MATCH/PARTIAL_MATCH/WEAK_MATCH
-        - candidate_summary, verdict_explanation, matched_keywords[], missing_keywords[], strengths[], improvement_areas[], quick_wins[], interview_talking_points[], rewrite_suggestion.
+        prompt = f"""Analyze resume against JD. Output JSON matching this EXACT schema:
+        {{
+          "ats_score": 0-100,
+          "semantic_score": 0-100,
+          "keyword_score": 0-100,
+          "experience_score": 0-100,
+          "skills_score": 0-100,
+          "education_score": 0-100,
+          "achievements_score": 0-100,
+          "overall_verdict": "STRONG_MATCH/GOOD_MATCH/PARTIAL_MATCH/WEAK_MATCH",
+          "candidate_summary": "string",
+          "verdict_explanation": "string",
+          "matched_keywords": ["str"],
+          "missing_keywords": ["str"],
+          "strengths": [{{ "title": "str", "description": "str" }}],
+          "improvement_areas": [{{ "title": "str", "description": "str", "priority": "HIGH/MEDIUM/LOW" }}],
+          "quick_wins": ["str"],
+          "interview_talking_points": ["str"],
+          "rewrite_suggestion": "str"
+        }}
         JD: {jd[:1000]}
-        Context: {context_str}"""
+        Resume Context: {context_str}"""
         
         analysis = analyze_with_groq(prompt)
         
-        # 4. Final Sync for Dashboard
+        # 4. Final Response with Dashboard Sync
         return jsonify({
-            "ats_score": analysis.get("ats_score", 0),
-            "semantic_score": analysis.get("semantic_score", 0),
-            "keyword_score": analysis.get("keyword_score", 0),
-            "overall_verdict": analysis.get("overall_verdict", "WEAK_MATCH"),
-            "candidate_summary": analysis.get("candidate_summary", ""),
-            "verdict_explanation": analysis.get("verdict_explanation", ""),
-            "matched_keywords": analysis.get("matched_keywords", []),
-            "missing_keywords": analysis.get("missing_keywords", []),
-            "strengths": analysis.get("strengths", []),
-            "improvement_areas": analysis.get("improvement_areas", []),
-            "quick_wins": analysis.get("quick_wins", []),
-            "interview_talking_points": analysis.get("interview_talking_points", []),
-            "rewrite_suggestion": analysis.get("rewrite_suggestion", ""),
+            **analysis,
             "resume_length": word_count,
             "success": True
         }), 200
@@ -189,8 +185,7 @@ def analyze():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+def index(): return render_template("index.html")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
