@@ -4,6 +4,14 @@
 
 "use strict";
 
+// ── API Configuration (Vercel -> Render) ──────────────────────
+// UPDATE: Change this to your actual Render URL when you go live!
+const API_BASE_URL = window.location.hostname.includes("localhost") 
+  ? "" 
+  : "https://ai-resume-analyzer-praveen.onrender.com"; // <-- REPLACE WITH YOUR RENDER URL
+
+console.log("🚀 ResumeAI: Connecting to backend at", API_BASE_URL || "local server");
+
 // ── Particle Background ──────────────────────────────────────
 (function initParticles() {
   const canvas = document.getElementById("particles-canvas");
@@ -420,7 +428,7 @@ form.addEventListener("submit", async (e) => {
     formData.append("resume", selectedFile);
     formData.append("job_description", jd);
 
-    const res = await fetch("/api/analyze", {
+    const res = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: "POST",
       body: formData,
     });

@@ -33,7 +33,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+# Professional CORS configuration
+CORS(app, resources={r"/api/*": {"origins": "*"}}) # Set to "*" to support any Vercel domain initially
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB limit
