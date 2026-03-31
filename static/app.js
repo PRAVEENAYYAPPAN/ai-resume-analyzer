@@ -8,7 +8,7 @@
 // UPDATE: Change this to your actual Render URL when you go live!
 const API_BASE_URL = window.location.hostname.includes("localhost") 
   ? "" 
-  : "https://ai-resume-analyzer-praveen.onrender.com"; // <-- REPLACE WITH YOUR RENDER URL
+  : "https://ai-resume-analyzer-fa47.onrender.com"; // <-- SYNCED WITH YOUR RENDER DASHBOARD URL!
 
 console.log("🚀 ResumeAI: Connecting to backend at", API_BASE_URL || "local server");
 
