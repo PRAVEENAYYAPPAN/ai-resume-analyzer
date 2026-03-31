@@ -38,12 +38,11 @@ app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-pro
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB limit
 ALLOWED_EXTENSIONS = {"pdf", "docx", "doc"}
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
 def configure_genai():
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not set in .env")
-    genai.configure(api_key=GEMINI_API_KEY)
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is missing from environment variables.")
+    genai.configure(api_key=api_key)
 
 # ---------------------------------------------------------------------------
 # Cloud Embeddings & Similarity (RAG Lite)
