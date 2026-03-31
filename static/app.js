@@ -444,8 +444,12 @@ form.addEventListener("submit", async (e) => {
 
   } catch (err) {
     hideLoading();
-    showError(err.message || "An unexpected error occurred.");
-    console.error(err);
+    const errorMsg = (err.message === "Failed to fetch") 
+      ? `Network Error: Could not reach backend at "${API_BASE_URL}". Please check your Render URL in app.js.`
+      : (err.message || "An unexpected error occurred.");
+    
+    showError(errorMsg);
+    console.error("Analysis Error:", err);
   } finally {
     submitBtn.disabled = false;
     btnText.classList.remove("hidden");
