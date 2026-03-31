@@ -1,7 +1,7 @@
 """
-AI Resume Analyzer — Pure Groq Edition
-LLM: Groq Llama 3.3 | Search: Local Llama-Lite Embeddings
-Deployment: Render (Backend) / Vercel (Frontend)
+AI Resume Analyzer — Pure Groq Llama 3.3
+Search: Lite Professional TF-IDF RAG (Stability Patch)
+No Torch/Memory Crashes on Render Free Tier.
 """
 
 import os
@@ -11,7 +11,6 @@ import io
 import logging
 import time
 from pathlib import Path
-from functools import lru_cache
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -22,10 +21,11 @@ import pdfplumber
 from docx import Document
 import numpy as np
 from groq import Groq
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # ---------------------------------------------------------------------------
-# Configuration (Pure Groq)
+# Configuration
 # ---------------------------------------------------------------------------
 load_dotenv(override=True)
 
@@ -33,15 +33,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# Professional CORS to allow Vercel
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Total CORS freedom for Vercel connection
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB limit
-ALLOWED_EXTENSIONS = {"pdf", "docx", "doc"}
-
-# Global model cache (Lazy loading)
-_EMBED_MODEL = None
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024 
 
 def get_groq_client():
     api_key = os.getenv("GROQ_API_KEY")
@@ -49,31 +45,18 @@ def get_groq_client():
         raise ValueError("GROQ_API_KEY is missing from environment variables.")
     return Groq(api_key=api_key)
 
-def get_embed_model():
-    """Lazily load the embedding model to save startup time."""
-    global _EMBED_MODEL
-    if _EMBED_MODEL is None:
-        logger.info("Initializing 'all-MiniLM-L6-v2' (Lite Local model)...")
-        # We use CPU-only mode for Render compat
-        _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-    return _EMBED_MODEL
-
 # ---------------------------------------------------------------------------
-# Semantic Search (Lite Llama RAG)
+# Professional Lite RAG (TF-IDF Similarity)
 # ---------------------------------------------------------------------------
 
-def calculate_embeddings(texts: list[str]) -> np.ndarray:
-    model = get_embed_model()
-    return model.encode(texts, normalize_embeddings=True)
-
-def semantic_search(query: str, chunks: list[str], chunk_embeddings: np.ndarray, top_k: int = 5) -> list[str]:
-    model = get_embed_model()
-    q_emb = model.encode([query], normalize_embeddings=True)[0]
+def semantic_search_lite(query: str, chunks: list[str], top_k: int = 5) -> list[str]:
+    """Extremely memory-efficient RAG using TF-IDF."""
+    if not chunks: return []
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(chunks)
+    query_vec = vectorizer.transform([query])
     
-    # Calculate cosine similarities using dot product (since normalized)
-    similarities = np.dot(chunk_embeddings, q_emb)
-    
-    # Get top_k indices
+    similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
     top_indices = np.argsort(similarities)[-top_k:][::-1]
     return [chunks[i] for i in top_indices]
 
@@ -83,25 +66,24 @@ def semantic_search(query: str, chunks: list[str], chunk_embeddings: np.ndarray,
 
 def extract_resume_text(file_bytes: bytes, filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower()
-    if ext == "pdf":
-        text_parts = []
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text: text_parts.append(text)
-        return "\n".join(text_parts)
-    elif ext in ("docx", "doc"):
-        doc = Document(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    try:
+        if ext == "pdf":
+            text_parts = []
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text: text_parts.append(text)
+            return "\n".join(text_parts)
+        elif ext in ("docx", "doc"):
+            doc = Document(io.BytesIO(file_bytes))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    except Exception as e:
+        logger.error(f"Text extraction error: {e}")
     return ""
 
-def chunk_text(text: str, chunk_size: int = 150, overlap: int = 30) -> list[str]:
+def chunk_text(text: str, chunk_size: int = 200) -> list[str]:
     words = text.split()
-    chunks, i = [], 0
-    while i < len(words):
-        chunks.append(" ".join(words[i: i+chunk_size]))
-        i += chunk_size - overlap
-    return chunks
+    return [" ".join(words[i : i + chunk_size]) for i in range(0, len(words), chunk_size - 30)]
 
 # ---------------------------------------------------------------------------
 # Groq Logic (LLM Analysis)
@@ -123,7 +105,7 @@ def analyze_with_groq(prompt: str, max_retries: int = 3) -> dict:
             return json.loads(response.choices[0].message.content.strip())
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(5)
+                time.sleep(2)
                 continue
             raise e
 
@@ -137,42 +119,41 @@ def index():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "embeddings": "Local-Lite"})
+    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "rag": "TF-IDF Lite"})
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
+    # CORS headers for stability
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
     if "resume" not in request.files:
-        return jsonify({"error": "Resume missing"}), 400
+        return jsonify({"success": False, "error": "Resume missing"}), 400
+    
     file = request.files["resume"]
     jd = request.form.get("job_description", "").strip()
     
     try:
         # 1. Parse
         resume_text = extract_resume_text(file.read(), secure_filename(file.filename))
+        if not resume_text:
+            return jsonify({"success": False, "error": "Could not extract text from file."}), 400
+            
+        # 2. RAG Search (Lite version)
         chunks = chunk_text(resume_text)
-        
-        # 2. Embed & Retrieve
-        chunk_embs = calculate_embeddings(chunks)
-        relevant_chunks = semantic_search(jd, chunks, chunk_embs)
+        relevant_chunks = semantic_search_lite(jd, chunks)
         
         # 3. Analyze with Groq
         context_str = "\n---\n".join(relevant_chunks)
-        prompt = f"Analyze resume chunks for JD. JD: {jd[:1000]}. Chunks: {context_str}"
-        llm_result = analyze_with_groq(prompt)
+        prompt = f"Analyze resume for JD. Return valid JSON. Output schema: ats_score (0-100), overall_verdict (STRONG_MATCH, etc), candidate_summary, verdict_explanation, matched_keywords (list), missing_keywords (list), strengths (list of title/desc), improvement_areas (list of title/desc/priority), quick_wins (list), interview_talking_points (list). JD: {jd[:1000]}. Context from resume: {context_str}"
         
-        # 4. Mix in ATS scoring (simple placeholder for now)
-        ats_score = min(round(np.mean([abs(chunk_embs[0][0]*100), 75]), 1), 98) # Mock score logic
+        analysis = analyze_with_groq(prompt)
         
-        return jsonify({
-            **llm_result,
-            "ats_score": ats_score,
-            "success": True
-        }), 200
+        return jsonify({**analysis, "success": True}), 200
 
     except Exception as e:
         logger.exception(e)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))

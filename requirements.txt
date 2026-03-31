@@ -4,8 +4,9 @@ pdfplumber==0.11.0
 python-docx==1.1.2
 python-dotenv==1.0.1
 groq==0.9.0
-sentence-transformers==3.0.1
 numpy==1.26.4
+scikit-learn==1.4.2
+scipy==1.13.1
 Werkzeug==3.0.3
 gunicorn==22.0.0
 pypdfium2==4.30.0
