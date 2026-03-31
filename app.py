@@ -1,6 +1,7 @@
 """
-AI Resume Analyzer - Backend
-RAG + LLM powered resume analysis using FAISS embeddings + Google Gemini
+AI Resume Analyzer - Cloud RAG Edition
+Optimized for Vercel / Serverless / Render (Fast & Lightweight)
+Using Google Gemini 2.5 Flash + Cloud Embeddings (v004)
 """
 
 import os
@@ -20,8 +21,6 @@ from dotenv import load_dotenv
 import pdfplumber
 from docx import Document
 import numpy as np
-import faiss
-from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 
 # ---------------------------------------------------------------------------
@@ -41,25 +40,50 @@ ALLOWED_EXTENSIONS = {"pdf", "docx", "doc"}
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# ---------------------------------------------------------------------------
-# Lazy-load Heavy Models
-# ---------------------------------------------------------------------------
-_embedding_model: SentenceTransformer | None = None
-
-def get_embedding_model() -> SentenceTransformer:
-    global _embedding_model
-    if _embedding_model is None:
-        logger.info("Loading SentenceTransformer model …")
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-        logger.info("SentenceTransformer loaded.")
-    return _embedding_model
-
-def get_gemini_model():
+def configure_genai():
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY not set in .env")
     genai.configure(api_key=GEMINI_API_KEY)
-    # Using Gemini 2.5 Flash as requested for updated tech
-    return genai.GenerativeModel('gemini-2.5-flash')
+
+# ---------------------------------------------------------------------------
+# Cloud Embeddings & Similarity (RAG Lite)
+# ---------------------------------------------------------------------------
+
+def get_embeddings(texts: list[str]) -> list[list[float]]:
+    """Fetch embeddings from Google Cloud API."""
+    configure_genai()
+    try:
+        # Using the state-of-the-art text-embedding-004 model
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=texts,
+            task_type="retrieval_document"
+        )
+        return result['embedding']
+    except Exception as e:
+        logger.error(f"Embedding error: {e}")
+        # Fallback to zeros (prevents crash)
+        return [[0.0] * 768 for _ in texts]
+
+def cosine_similarity(v1, v2):
+    """Simple dot product similarity for normalized vectors."""
+    return float(np.dot(v1, v2))
+
+def semantic_search(query_text: str, chunks: list[str], chunk_embeddings: list[list[float]], top_k: int = 5) -> list[str]:
+    """Search chunks using dot product similarity."""
+    configure_genai()
+    q_emb = genai.embed_content(
+        model="models/text-embedding-004",
+        content=query_text,
+        task_type="retrieval_query"
+    )['embedding']
+    
+    # Calculate similarities
+    similarities = [cosine_similarity(q_emb, c_emb) for c_emb in chunk_embeddings]
+    
+    # Sort and return top_k
+    top_indices = np.argsort(similarities)[-top_k:][::-1]
+    return [chunks[i] for i in top_indices]
 
 # ---------------------------------------------------------------------------
 # Utility — Document Parsing
@@ -90,7 +114,7 @@ def extract_resume_text(file_bytes: bytes, filename: str) -> str:
     raise ValueError(f"Unsupported file type: {ext}")
 
 # ---------------------------------------------------------------------------
-# RAG — Chunk + Embed + FAISS Search
+# RAG — Chunking
 # ---------------------------------------------------------------------------
 
 def chunk_text(text: str, chunk_size: int = 150, overlap: int = 30) -> list[str]:
@@ -103,27 +127,8 @@ def chunk_text(text: str, chunk_size: int = 150, overlap: int = 30) -> list[str]
         i += chunk_size - overlap
     return chunks
 
-def build_faiss_index(chunks: list[str], model: SentenceTransformer):
-    embeddings = model.encode(chunks, show_progress_bar=False, normalize_embeddings=True)
-    embeddings = np.array(embeddings, dtype="float32")
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dim)
-    index.add(embeddings)
-    return index, embeddings
-
-def semantic_search(query: str, chunks: list[str], index, model: SentenceTransformer, top_k: int = 5) -> list[str]:
-    q_emb = model.encode([query], normalize_embeddings=True).astype("float32")
-    scores, indices = index.search(q_emb, top_k)
-    return [chunks[i] for i in indices[0] if i < len(chunks)]
-
-def compute_rag_similarity(resume_text: str, job_description: str, model: SentenceTransformer) -> float:
-    r_emb = model.encode([resume_text], normalize_embeddings=True)
-    j_emb = model.encode([job_description], normalize_embeddings=True)
-    similarity = float(np.dot(r_emb[0], j_emb[0]))
-    return round(min(max(similarity * 100, 0), 100), 2)
-
 # ---------------------------------------------------------------------------
-# ATS Scoring
+# ATS Scoring (Keywords + Semantics)
 # ---------------------------------------------------------------------------
 
 TECH_KEYWORDS = [
@@ -148,14 +153,20 @@ def extract_keywords(text: str) -> set[str]:
             found.add(kw)
     return found
 
-def calculate_ats_score(resume_text: str, job_description: str, semantic_score: float) -> dict:
+def calculate_ats_score(resume_text: str, job_description: str, resume_emb: list[float], jd_emb: list[float]) -> dict:
     resume_kws = extract_keywords(resume_text)
     jd_kws = extract_keywords(job_description)
     matched = resume_kws & jd_kws
     missing = jd_kws - resume_kws
+    
+    # Calculate scores
     keyword_score = (len(matched) / max(len(jd_kws), 1)) * 100 if jd_kws else 50.0
+    semantic_score = cosine_similarity(resume_emb, jd_emb) * 100
+    semantic_score = min(max(semantic_score, 0), 100)
+    
     ats_score = round(0.60 * semantic_score + 0.40 * keyword_score, 1)
     ats_score = min(ats_score, 98)
+    
     return {
         "ats_score": ats_score,
         "keyword_score": round(keyword_score, 1),
@@ -166,43 +177,12 @@ def calculate_ats_score(resume_text: str, job_description: str, semantic_score: 
     }
 
 # ---------------------------------------------------------------------------
-# Gemini Analysis
+# Gemini Logic
 # ---------------------------------------------------------------------------
 
-def build_analysis_prompt(resume_text: str, job_description: str, ats_data: dict, relevant_chunks: list[str]) -> str:
-    chunks_context = "\n---\n".join(relevant_chunks[:5])
-    return f"""You are an expert AI Career Coach and ATS specialist.
-Analyze the resume sections against the job description.
-
-## Relevant Resume Sections:
-{chunks_context}
-
-## Job Description:
-{job_description[:1500]}
-
-## Pre-computed ATS Data:
-- ATS Score: {ats_data['ats_score']}/100
-- Matched Keywords: {', '.join(ats_data['matched_keywords'][:15]) or 'None'}
-- Missing Keywords: {', '.join(ats_data['missing_keywords'][:15]) or 'None'}
-
-Provide a professional analysis in VALID JSON format ONLY. 
-Structure:
-{{
-  "candidate_summary": "2-3 sentences",
-  "overall_verdict": "STRONG_MATCH | GOOD_MATCH | PARTIAL_MATCH | WEAK_MATCH",
-  "verdict_explanation": "1-2 sentences",
-  "strengths": [ {{"title": "Title", "description": "Desc"}} ],
-  "improvement_areas": [ {{"title": "Title", "description": "Desc", "priority": "HIGH|MEDIUM|LOW"}} ],
-  "missing_skills": ["skill1"],
-  "resume_score_breakdown": {{ "experience_relevance": 0, "skills_alignment": 0, "education_fit": 0, "achievements_impact": 0 }},
-  "quick_wins": ["tip1"],
-  "interview_talking_points": ["pt1"],
-  "rewrite_suggestion": "example rewrite"
-}}
-Return ONLY the JSON object."""
-
 def analyze_with_ai(prompt: str, max_retries: int = 3) -> dict:
-    model = get_gemini_model()
+    configure_genai()
+    model = genai.GenerativeModel('gemini-2.5-flash')
     for attempt in range(max_retries):
         try:
             response = model.generate_content(
@@ -220,7 +200,7 @@ def analyze_with_ai(prompt: str, max_retries: int = 3) -> dict:
             raise e
 
 # ---------------------------------------------------------------------------
-# Flask Routes
+# API Routes
 # ---------------------------------------------------------------------------
 
 @app.route("/")
@@ -229,7 +209,7 @@ def index():
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "version": "2.5.0", "model": "gemini-2.5-flash"})
+    return jsonify({"status": "ok", "version": "3.0.0", "model": "gemini-2.5-flash-embedded"})
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
@@ -245,31 +225,67 @@ def analyze():
         return jsonify({"error": "JD too short."}), 400
 
     try:
+        configure_genai()
+        # 1. Parse
         file_bytes = file.read()
         filename = secure_filename(file.filename)
         resume_text = extract_resume_text(file_bytes, filename)
         if len(resume_text.strip()) < 100:
             return jsonify({"error": "Could not extract text."}), 400
 
-        model = get_embedding_model()
+        # 2. Chunk
         chunks = chunk_text(resume_text)
-        index, _ = build_faiss_index(chunks, model)
-        relevant_chunks = semantic_search(job_description, chunks, index, model, top_k=5)
-        semantic_score = compute_rag_similarity(resume_text, job_description, model)
-        ats_data = calculate_ats_score(resume_text, job_description, semantic_score)
         
-        prompt = build_analysis_prompt(resume_text, job_description, ats_data, relevant_chunks)
+        # 3. Cloud Embeddings (Full Resume, JD, and Chunks)
+        # This replaces local SentenceTransformers and FAISS
+        all_embeddings = get_embeddings([resume_text, job_description] + chunks)
+        resume_emb = all_embeddings[0]
+        jd_emb = all_embeddings[1]
+        chunk_embeddings = all_embeddings[2:]
+        
+        # 4. Search & Score
+        relevant_chunks = semantic_search(job_description, chunks, chunk_embeddings, top_k=5)
+        ats_data = calculate_ats_score(resume_text, job_description, resume_emb, jd_emb)
+        
+        # 5. Build Prompt (using retrieved RAG context)
+        chunks_context = "\n---\n".join(relevant_chunks)
+        prompt = f"""You are an expert AI Career Coach and ATS specialist.
+Analyze the resume sections against the job description.
+
+## Relevant Resume Sections:
+{chunks_context}
+
+## Job Description:
+{job_description[:1500]}
+
+## Pre-computed ATS Data:
+- ATS Score: {ats_data['ats_score']}/100
+- Matched Keywords: {', '.join(ats_data['matched_keywords'][:15]) or 'None'}
+- Missing Keywords: {', '.join(ats_data['missing_keywords'][:15]) or 'None'}
+
+Provide a professional analysis in VALID JSON format ONLY. 
+{{
+  "candidate_summary": "2-3 sentences",
+  "overall_verdict": "STRONG_MATCH | GOOD_MATCH | PARTIAL_MATCH | WEAK_MATCH",
+  "verdict_explanation": "1-2 sentences",
+  "strengths": [ {{"title": "Title", "description": "Desc"}} ],
+  "improvement_areas": [ {{"title": "Title", "description": "Desc", "priority": "HIGH|MEDIUM|LOW"}} ],
+  "missing_skills": ["skill1"],
+  "resume_score_breakdown": {{ "experience_relevance": 0, "skills_alignment": 0, "education_fit": 0, "achievements_impact": 0 }},
+  "quick_wins": ["tip1"],
+  "interview_talking_points": ["pt1"],
+  "rewrite_suggestion": "example rewrite"
+}}
+Return ONLY JSON."""
+
         llm_result = analyze_with_ai(prompt)
 
         return jsonify({
-            "success": True,
-            "ats_score": ats_data["ats_score"],
-            "keyword_score": ats_data["keyword_score"],
-            "semantic_score": ats_data["semantic_score"],
-            "matched_keywords": ats_data["matched_keywords"],
-            "missing_keywords": ats_data["missing_keywords"],
-            **llm_result
+            **ats_data,
+            **llm_result,
+            "success": True
         }), 200
+
     except Exception as e:
         logger.exception(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
