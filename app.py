@@ -1,6 +1,6 @@
 """
-AI Resume Analyzer — Pure Groq Edition (Indestructible V3)
-100% UI Sync | Zero Binary Dependencies | No Score Gaps
+AI Resume Analyzer — Pure Groq Edition (Final Precision Sync)
+Fixed: Score Breakdown nesting & Strengths/Improvements mapping.
 """
 
 import os
@@ -102,7 +102,7 @@ def analyze_with_groq(prompt: str, max_retries: int = 3) -> dict:
         try:
             response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a professional ATS expert. Respond with valid JSON only."},
+                    {"role": "system", "content": "You are a professional ATS expert. JSON ONLY."},
                     {"role": "user", "content": prompt}
                 ],
                 model="llama-3.3-70b-versatile",
@@ -122,7 +122,7 @@ def analyze_with_groq(prompt: str, max_retries: int = 3) -> dict:
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "rag": "Indestructible-V3"})
+    return jsonify({"status": "live", "engine": "Groq Llama 3.3", "rag": "Final-Sync"})
 
 @app.route("/api/analyze", methods=["POST", "OPTIONS"])
 def analyze():
@@ -146,20 +146,22 @@ def analyze():
         # 2. RAG Search
         relevant_chunks = semantic_search_lite(jd, chunks)
         
-        # 3. Analyze with Groq (Full UI Schema)
+        # 3. Analyze with Groq (Locked to exact UI names)
         context_str = "\n---\n".join(relevant_chunks)
-        prompt = f"""Analyze resume against JD. Output JSON matching this EXACT schema:
+        prompt = f"""Analyze resume against JD. Output EXACT JSON following this schema:
         {{
           "ats_score": 0-100,
           "semantic_score": 0-100,
           "keyword_score": 0-100,
-          "experience_score": 0-100,
-          "skills_score": 0-100,
-          "education_score": 0-100,
-          "achievements_score": 0-100,
           "overall_verdict": "STRONG_MATCH/GOOD_MATCH/PARTIAL_MATCH/WEAK_MATCH",
           "candidate_summary": "string",
           "verdict_explanation": "string",
+          "resume_score_breakdown": {{
+             "experience_relevance": 0-100,
+             "skills_alignment": 0-100,
+             "education_fit": 0-100,
+             "achievements_impact": 0-100
+          }},
           "matched_keywords": ["str"],
           "missing_keywords": ["str"],
           "strengths": [{{ "title": "str", "description": "str" }}],
@@ -169,11 +171,11 @@ def analyze():
           "rewrite_suggestion": "str"
         }}
         JD: {jd[:1000]}
-        Resume Context: {context_str}"""
+        Context: {context_str}"""
         
         analysis = analyze_with_groq(prompt)
         
-        # 4. Final Response with Dashboard Sync
+        # 4. Final Sync
         return jsonify({
             **analysis,
             "resume_length": word_count,
