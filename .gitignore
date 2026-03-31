@@ -1,0 +1,55 @@
+# =============================================
+# AI Resume Analyzer — .gitignore
+# =============================================
+
+# --- Environment & Secrets (NEVER commit these) ---
+.env
+.env.local
+.env.*.local
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+.ENV/
+ENV/
+
+# --- Packaging ---
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Testing ---
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Render / Deployment ---
+*.log
+
+# --- FAISS / Model Cache ---
+*.index
+*.faiss
+sentence_transformers_cache/
